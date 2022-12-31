@@ -1,0 +1,7 @@
+# Pull base image 
+FROM tomcat:8-jre8
+# Define project name
+LABEL PROJECT_NAME="skill-up-project5-helloworld"
+# Copy *.war file into Tomcat's root directory
+COPY ./webapp/target/webapp.war /usr/local/tomcat/webapps
+

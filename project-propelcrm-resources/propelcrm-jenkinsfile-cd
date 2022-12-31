@@ -1,0 +1,104 @@
+pipeline {
+    agent any
+    tools {}
+    environment {
+        APP_GIT_REPO_DIR='project1'
+        API_APP_DIR='propelcrm'
+        REGISTRY_CREDENTIAL= 
+        APP_REGISTRY= 
+        PROJECT_REGISTRY=
+    }
+    
+    stages {
+        stage('Fetch Code') {
+            steps {
+                dir("${APP_GIT_REPO_DIR}") {
+                    git branch: 'main', url: 'git@github.com:skill-up-devops-projects/project1.git'
+                    sh 'ls -a'
+                }
+            }
+            post {
+                success {
+                    echo 'Git repository Fetched and Stepping into Build-stage'
+                }
+            }
+        }
+
+        stage('Test-Stage') {
+            steps {
+                dir("${APP_GIT_REPO_DIR}/${API_APP_DIR}") {
+                    sh 'mvn test'
+                }
+                sh 'pwd'
+            }
+        }
+
+        stage('Checkstyle Analysis - Stage') {
+            steps {
+                dir("${APP_GIT_REPO_DIR}/${API_APP_DIR}"){
+                    sh 'mvn checkstyle:checkstyle'
+                }
+            }
+            post {
+                success {
+                    echo 'Analysis Result Generated'
+                }
+            }
+        }
+
+        stage('SonarQube-Scanning-Stage') {
+            environment {
+                sonarHome = tool 'SONARQUBE_1'
+            }
+            steps {
+                // SonarQube Server-url and secret key should be configured in 'Configure System'
+                // Project properties should be defined for SonarQube in a manner mentioned below
+                withSonarQubeEnv(installationName: 'sonarqube-url') {
+                    sh '''${sonarHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=project1:skill-up \
+                        -Dsonar.projectName=skill-up-project1 \
+                        -Dsonar.projectVersion=${BUILD_NUMBER} \
+                        -Dsonar.sources=${APP_GIT_REPO_DIR}/${API_APP_DIR}/src \
+                        -Dsonar.java.binaries=${APP_GIT_REPO_DIR}/${API_APP_DIR}/target/classes
+                    '''
+                }
+            }
+        }
+
+        stage('Quality-Gate-Stage') {
+            steps {
+                timeout(time:1, unit: 'MINUTES') {
+                    // Parameter indicates whether to set pipeline to UNSTABLE if Quality Gate fails
+                    // true = set pipeline to UNSTABLE, false = don't
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+            post {
+                success {
+                    echo 'Quality-Gate-Stage Successfully Done'
+                }
+            }
+        }
+
+        stage('Build-Stage') {
+            steps{
+                dir("${APP_GIT_REPO_DIR}/${API_APP_DIR}"){
+                    script{
+                        dockerImage = docker.build( "${APP_REGISTRY}" + ":$BUILD_NUMBER", "./Docker-files/app/multistage/")
+                    }
+                }               
+            }
+        }
+
+        stage('Upload App Image') {
+            steps{
+                script {
+                    docker.withRegistry( "${PROJECT_REGISTRY}", "${REGISTRY_CREDENTIAL}" ) {
+                        dockerImage.push("$BUILD_NUMBER")
+                        dockerImage.push('latest')
+                    }
+                }
+            }
+        }
+    }
+}

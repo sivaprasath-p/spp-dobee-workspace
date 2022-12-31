@@ -1,0 +1,159 @@
+// Welcome to Skill-Up-Project1
+/*
+Required plugins for this pipeline mentioned below
+    * Pipeline and Pipeline Utility Steps
+    * Slack Notification Plugin
+    * SonarQube Scanner for jenkins
+    * Sonar Quality GAtes Plugin
+    * Maven Integration Plugin
+*/
+
+def COLOUR_MAP = [
+    'SUCCESS': 'good', 
+    'FAILURE': 'danger',
+]
+
+pipeline {
+    agent none
+    environment{
+        // Defining required env.variables for this pipeline
+        APP_GIT_REPO_DIR='project1'
+        API_APP_DIR='propelcrm'
+        SONARQUBE_URL='http://192.168.25.25:9000'
+    }
+
+    stages {
+        stage('Stage1') {
+            agent any
+            steps {
+                echo 'Hello World! Welcome to Sample Project1'
+            }
+        }
+
+        stage('Clone-Stage') {
+            agent any
+            steps {
+                dir("${APP_GIT_REPO_DIR}") {
+                    echo 'Fetching Git Repository...'
+                    git branch: 'main', url: 'git@github.com:skill-up-devops-projects/project1.git'
+                    // You should put the ssh key in gethub in order to getch the source code from SCM
+                    sh 'ls -a'
+                }
+            }
+            post {
+                success {
+                    echo 'Git repository Fetched and Stepping into Build-stage'
+                }
+            }
+        }
+
+        stage('Build-Stage') {
+            agent any
+            steps {
+                dir("${APP_GIT_REPO_DIR}/${API_APP_DIR}") {
+                    // Maven should be installed in host-machine
+                    sh 'mvn -q clean install'   
+                }
+                sh 'pwd'
+            }
+            post {
+                success {
+                    echo 'Maven Build-Stage Successfully Done'
+                }
+            }
+        }
+
+        stage('Test-Stage') {
+            agent any
+            steps {
+                dir("${APP_GIT_REPO_DIR}/${API_APP_DIR}") {
+                    sh 'mvn test'
+                }
+                sh 'pwd'
+            }
+        }
+
+        stage('Checkstyle Analysis - Stage') {
+            agent any
+            steps {
+                dir("${APP_GIT_REPO_DIR}/${API_APP_DIR}"){
+                    sh 'mvn checkstyle:checkstyle'
+                }
+            }
+            post {
+                success {
+                    echo 'Maven all stages Successfully Done'
+                }
+            }
+        }
+
+        stage('SonarQube-Scanning-Stage') {
+            agent any
+            environment {
+                sonarHome = tool 'SONARQUBE_1'
+            }
+            steps {
+                // SonarQube Server-url and secret key should be configured in 'Configure System'
+                // Project properties should be defined for SonarQube in a manner mentioned below
+                withSonarQubeEnv(installationName: 'sonarqube-url') {
+                    sh '''${sonarHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=project1:skill-up \
+                        -Dsonar.projectName=skill-up-project1 \
+                        -Dsonar.projectVersion=${BUILD_NUMBER} \
+                        -Dsonar.sources=${APP_GIT_REPO_DIR}/${API_APP_DIR}/src \
+                        -Dsonar.java.binaries=${APP_GIT_REPO_DIR}/${API_APP_DIR}/target/classes
+                    '''
+                }
+            }
+        }
+
+        stage('Quality-Gate-Stage') {
+            agent any
+            steps {
+                timeout(time:1, unit: 'MINUTES') {
+                    // Parameter indicates whether to set pipeline to UNSTABLE if Quality Gate fails
+                    // true = set pipeline to UNSTABLE, false = don't
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+            post {
+                success {
+                    echo 'Quality-Gate-Stage Successfully Done'
+                }
+            }
+        }
+
+        stage('UploadArtifact-Stage') {
+            agent any
+            steps {
+                // Artifact properties should be defined for Nexus in a manner mentioned below
+                nexusArtifactUploader(
+                    nexusVersion: 'nexus3',
+                    protocol: 'http',
+                    nexusUrl: "mynexus-server.dns.army:8081",
+                    groupId: 'DevOps',
+                    version: "${BUILD_NUMBER}",
+                    repository: 'skill-up-project1',
+                    credentialsId: 'nexus-id1',
+                    artifacts: [
+                        [artifactId: 'project1',
+                         classifier: '',
+                         file: "${APP_GIT_REPO_DIR}/${API_APP_DIR}/target/skill-up-project1.war",
+                         type: 'war'
+                        ]
+                    ]
+                )
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Slack Notifications.'
+            // Channel 'jenkins-cicd' will be notified always about results 
+            slackSend channel: '#jenkins-cicd',
+                color: COLOUR_MAP[currentBuild.currentResult],
+                message: "*${currentBuild.currentResult}:* Job ${JOB_NAME} build ${BUILD_NUMBER} \n More info at: ${BUILD_URL}"
+        }
+    }
+}

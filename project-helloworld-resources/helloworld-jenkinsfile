@@ -1,0 +1,86 @@
+// Welcome to Skill-Up-Project1
+
+pipeline {
+    agent any
+    environment {
+        WAR_DIR="webapp/target/"
+        AWS_ACCOUNT_ID="475801350674"
+        AWS_DEFAULT_REGION="us-east-1"
+        imageRepoName="helloworld-project"
+        endPoint="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
+    }
+
+    stages {
+        // Fetching git repository
+        stage('Clone Stage') {
+            steps {
+                echo "Fetching Git Repository...."
+                git branch: 'master', credentialsId: 'github-id1', url: 'https://github.com/passhotmail/skill-up-project-helloworld.git'
+                sh 'ls -a'
+            }
+            post {
+                success {
+                    echo '''
+                    -----------------------------------
+                    Git repository Fetched successfully
+                    '''
+                    sh 'tree'
+                }
+            }
+        }
+
+        stage('Maven Build Stage') {
+            steps {
+                // Maven should be installed in host-machine or maven should be confidured in manage jenkins
+                sh 'mvn -q clean install -DskipTests'   
+            }
+            post {
+                success {
+                    echo '''
+                    -----------------------------------
+                    Maven Build-Stage Successfully Done
+                    '''
+                    sh 'tree'
+                }
+            }
+        }
+
+        stage('Logging into AWS ECR') {
+            steps {
+                script {
+                    sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${endPoint}"
+                }
+            }
+        }
+
+        // Building Docker image
+        stage('Build image') {
+            steps {
+                script {
+                    // sh ''' IMAGE_TAG_GIT_SHA="git rev-parse --short HEAD" '''
+                    dockerImage = docker.build "${imageRepoName}:${GIT_COMMIT}"
+                }
+            }
+        }
+
+        // Uploading Docker images into AWS ECR
+        stage('Pushing to ECR') {
+            steps {
+                script {
+                    sh "docker tag ${imageRepoName}:${GIT_COMMIT} ${endPoint}/${imageRepoName}:${GIT_COMMIT}"
+                    sh "docker push ${endPoint}/${imageRepoName}:${GIT_COMMIT}"
+                }
+            }
+        }
+        stage('Deploy Stage') {
+            steps {
+                sshagent(['tomcat-deploy']) {
+                // some block
+                sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${endPoint}"
+                sh "docker push ${endPoint}/${imageRepoName}:${GIT_COMMIT}"
+                sh "docker run -d -p 8080:8080 ${imageRepoName}:${GIT_COMMIT}"
+                }
+            }
+        }        
+    }
+}
