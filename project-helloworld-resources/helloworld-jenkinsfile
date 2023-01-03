@@ -77,7 +77,7 @@ pipeline {
                 sshagent(['tomcat-deploy']) {
                 // some block
                 sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${endPoint}"
-                sh "docker push ${endPoint}/${imageRepoName}:${GIT_COMMIT}"
+                sh "docker pull ${endPoint}/${imageRepoName}:${GIT_COMMIT}"
                 sh "docker run -d -p 8080:8080 ${imageRepoName}:${GIT_COMMIT}"
                 }
             }
