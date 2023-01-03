@@ -32,5 +32,6 @@ pipeline {
                 sh 'terraform plan -no-color -lock=false'
             }     
         }
+        // Now we can run terraform apply command once plan stage successfully executed
     }
 }
