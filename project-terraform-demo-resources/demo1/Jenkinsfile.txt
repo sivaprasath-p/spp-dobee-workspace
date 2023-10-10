@@ -1,0 +1,36 @@
+pipeline {
+    tools {
+        terraform 'terraform'
+    }
+    agent any
+    options {
+        skipDefaultCheckout(true)
+    }
+    stages {
+        stage('Clean Workspace') {
+            steps{
+                cleanWs()
+                checkout scm
+                echo "Building ${env.JOB_NAME}..."
+            }
+        }
+        stage('Fetch Code') {
+            agent any
+            steps {
+                git branch: 'main', credentialsId: 'github-id1', url: 'https://github.com/skill-up-devops-projects/project4-terraform.git'
+            }
+        }
+        stage('terraform init') {
+            agent any
+            steps{
+                sh 'terraform init -no-color -lock=false'
+            }
+        }
+        stage('Plan Stage'){
+            agent any
+            steps {
+                sh 'terraform plan -no-color -lock=false'
+            }     
+        }
+    }
+}
