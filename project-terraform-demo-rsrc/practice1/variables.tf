@@ -25,9 +25,10 @@ variable "instance_type" {
 }
 
 variable "cider_block" {
+  type = map(string)
   description = "cider block value for myVPC defined here"
   default = {
-    dev  = "10.20.0.0/16"
-    prod = "10.10.0.0/16"
+    dev  = "10.20.0.0"
+    prod = "10.10.0.0"
   }
 }

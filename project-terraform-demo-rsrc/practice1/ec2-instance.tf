@@ -33,7 +33,7 @@ resource "aws_instance" "ubuntu-vm1" {
   instance_type = var.instance_type[terraform.workspace]
   key_name      = aws_key_pair.linux-key.id
   hibernation = true
-  subnet_id = 
+  subnet_id = aws_subnet.myVPC1-pubSUB.id
   vpc_security_group_ids = [  ]
 
   tags = {
